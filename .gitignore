@@ -1,0 +1,9 @@
+build/
+dist/
+__pycache__/
+*.spec
+*.pyc
+debug_out.txt
+tmp_test.py
+.idea/
+.vscode/
