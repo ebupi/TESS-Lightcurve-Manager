@@ -2,6 +2,8 @@
 
 TESS (Transiting Exoplanet Survey Satellite) verilerini sağlanan MAST sunucularından aramanızı, grafik üzerinden incelemenizi ve toplu şekilde bilgisayarınıza indirmenizi sağlayan masaüstü bir araçtır. **Yeni sürüm ile birlikte arayüz PyQt5 kullanılarak tamamen modernize edilmiştir.**
 
+![TESS Aracı Arayüz Görünümü](screenshot.png)
+
 ## Özellikler
 - **Çoklu Gök Cismi Arama**: Virgül ile ayrılmış gök cismi adlarıyla tek tıklamayla çoklu arama yapılabilir.
 - **Birleşik Canlı Önizleme**: Lightkurve ve Matplotlib (Qt5) altyapısı ile birden fazla ışık eğrisini tek grafik üzerinde pürüzsüz (anti-aliased) bir şekilde inceleyebilirsiniz.
