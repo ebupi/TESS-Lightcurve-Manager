@@ -2,3 +2,6 @@ lightkurve
 astroquery
 astropy
 matplotlib
+pandas
+numpy
+PyQt5
