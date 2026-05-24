@@ -1,21 +1,25 @@
-# TESS Işık Eğrisi İndirme Aracı (v2.0)
+<div align="right">
+  <a href="README_TR.md"><img src="https://img.shields.io/badge/Lang-TR-red.svg" alt="TR"></a>
+</div>
 
-TESS (Transiting Exoplanet Survey Satellite) verilerini sağlanan MAST sunucularından aramanızı, grafik üzerinden incelemenizi ve toplu şekilde bilgisayarınıza indirmenizi sağlayan masaüstü bir araçtır. **Yeni sürüm ile birlikte arayüz PyQt5 kullanılarak tamamen modernize edilmiştir.**
+# TESS Lightcurve Manager (v2.0)
 
-![TESS Aracı Arayüz Görünümü](screenshot.png)
+A desktop tool that allows you to search for TESS (Transiting Exoplanet Survey Satellite) data from MAST servers, preview them on a plot, and batch download them to your computer. **With the new release, the GUI has been completely modernized using PyQt5.**
 
-## Özellikler
-- **Çoklu Gök Cismi Arama**: Virgül ile ayrılmış gök cismi adlarıyla tek tıklamayla çoklu arama yapılabilir.
-- **Birleşik Canlı Önizleme**: Lightkurve ve Matplotlib (Qt5) altyapısı ile birden fazla ışık eğrisini tek grafik üzerinde pürüzsüz (anti-aliased) bir şekilde inceleyebilirsiniz.
-- **Gelişmiş Dışa Aktarma (Export)**: Verileri FITS olarak veya ayırıcı (separator) ve ondalık (decimal) seçeneklerini kendiniz belirleyebildiğiniz gelişmiş CSV formatlarında indirebilirsiniz. İstediğiniz sütunları (`time`, `flux`, `flux_err`) seçebilirsiniz.
-- **Platform Bağımsız Pürüzsüz Arayüz**: PyQt5 sayesinde hem Windows hem Linux'ta keskin ve profesyonel arayüz görünümü.
+![TESS Manager Interface](screenshot.png)
 
-## Kurulum (Geliştiriciler & Linux/macOS)
-Projenin çalışması için Python gereklidir:
+## Features
+- **Multi-Target Search**: Perform multi-target searches with a single click using comma-separated target names.
+- **Combined Live Preview**: Powered by Lightkurve and Matplotlib (Qt5), you can smoothly view multiple lightcurves combined on a single anti-aliased plot.
+- **Advanced Export Options**: Download data as FITS or in advanced CSV formats where you can customize the separator and decimal character. You can also select specific columns (`time`, `flux`, `flux_err`) to save.
+- **Cross-Platform Smooth UI**: Crisp and professional user interface appearance on both Windows and Linux thanks to PyQt5.
+
+## Installation (Developers & Linux/macOS)
+Python is required for the project to run:
 1. `pip install -r requirements.txt`
 2. `python TESS_Araci.py`
 
-*(Daha hızlı bir Linux veya macOS kurulumu için `LINUX_KURULUM.md` belgesine bakabilirsiniz.)*
+*(For a faster Linux or macOS installation, please check the `LINUX_KURULUM.md` document.)*
 
-## Windows İçin
-Windows'da çalışan kullanıcılar doğrudan `dist` klasörü içindeki (eğer yayınlandıysa) `TESS_Araci.exe` dosyası ile uygulamayı kurulum gerekmeden çalıştırabilirler.
+## For Windows Users
+Windows users can directly run the application using the `TESS_Araci.exe` file located in the `dist` folder (if published) without needing any installation.
