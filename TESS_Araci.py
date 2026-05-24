@@ -524,7 +524,7 @@ class TESSApp(QMainWindow):
             xaxis_title=self.t("xaxis"),
             yaxis_title=self.t("yaxis"),
             margin=dict(l=20, r=20, t=40, b=20),
-            template="plotly_dark"
+            template="plotly_white"
         )
         self.web_view.setHtml(fig.to_html(include_plotlyjs='cdn'))
         
@@ -690,7 +690,7 @@ class TESSApp(QMainWindow):
                 xaxis_title=xaxis_title,
                 yaxis_title=self.t("yaxis"),
                 margin=dict(l=20, r=20, t=40, b=20),
-                template="plotly_dark",
+                template="plotly_white",
                 legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
             )
             self.web_view.setHtml(fig.to_html(include_plotlyjs='cdn'))
