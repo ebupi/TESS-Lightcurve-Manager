@@ -16,8 +16,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationTool
 from astroquery.mast import conf as mast_conf
 from astropy.utils.data import conf as astropy_conf
 
-mast_conf.timeout = 3600
-astropy_conf.remote_timeout = 3600
+mast_conf.timeout = 60
+astropy_conf.remote_timeout = 60
 
 TRANSLATIONS = {
     "EN": {
@@ -25,7 +25,7 @@ TRANSLATIONS = {
         "search_label": "Target Name (e.g. TT And):",
         "search_placeholder": "Enter target name...",
         "search_btn": "🔍 Search",
-        "searching": "🔍 Searching for '{}'...",
+        "searching": "🔍 Searching for '{}'... (MAST servers may take 10-30s, please wait)",
         "not_found": "❌ No results found.",
         "found": "✅ Found {} results.",
         "error": "❌ Error: {}",
@@ -72,7 +72,7 @@ TRANSLATIONS = {
         "search_label": "Gök Cismi (Örn: TT And):",
         "search_placeholder": "Gök cismi adı girin...",
         "search_btn": "🔍 Arama Yap",
-        "searching": "🔍 '{}' aranıyor...",
+        "searching": "🔍 '{}' aranıyor... (MAST sunucuları 10-30sn sürebilir, lütfen bekleyin)",
         "not_found": "❌ Sonuç bulunamadı.",
         "found": "✅ Toplam {} sonuç bulundu.",
         "error": "❌ Hata: {}",
