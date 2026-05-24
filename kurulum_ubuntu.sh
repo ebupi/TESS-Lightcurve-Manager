@@ -4,6 +4,12 @@
 APP_DIR=$(pwd)
 DESKTOP_FILE="$HOME/.local/share/applications/tess-manager.desktop"
 
+# phoebe conda ortamının python dizinini dinamik olarak bul
+PYTHON_BIN=$(conda run -n phoebe which python 2>/dev/null)
+if [ -z "$PYTHON_BIN" ]; then
+    PYTHON_BIN="$HOME/anaconda3/envs/phoebe/bin/python"
+fi
+
 echo "TESS Lightcurve Manager masaüstü kısayolu oluşturuluyor..."
 
 cat <<EOF > "$DESKTOP_FILE"
@@ -11,7 +17,7 @@ cat <<EOF > "$DESKTOP_FILE"
 Version=1.0
 Name=TESS Lightcurve Studio
 Comment=TESS Işık Eğrisi Analiz Aracı
-Exec=bash -c 'eval "\$(conda shell.bash hook)" && conda activate phoebe && cd "$APP_DIR" && python TESS_Araci.py'
+Exec=bash -c 'cd "$APP_DIR" && "$PYTHON_BIN" TESS_Araci.py'
 Icon=$APP_DIR/app_icon.png
 Terminal=false
 Type=Application
