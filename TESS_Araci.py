@@ -725,6 +725,9 @@ class TESSApp(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    app.setApplicationName("TESS Lightcurve Studio")
+    app.setApplicationDisplayName("TESS Lightcurve Studio")
+    app.setDesktopFileName("tess-manager.desktop")
     ex = TESSApp()
     ex.show()
     sys.exit(app.exec_())

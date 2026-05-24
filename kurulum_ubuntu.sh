@@ -22,6 +22,7 @@ Icon=$APP_DIR/app_icon.png
 Terminal=false
 Type=Application
 Categories=Science;Astronomy;Education;
+StartupWMClass=TESS Lightcurve Studio
 EOF
 
 chmod +x "$DESKTOP_FILE"
