@@ -5,13 +5,13 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QComboBox, QCheckBox, QTextEdit, QMessageBox, QGroupBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
-import lightkurve as lk
+from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 
-import matplotlib
-matplotlib.use('Qt5Agg')
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
+import lightkurve as lk
+import plotly.graph_objects as go
+from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
+from astroquery.vizier import Vizier
 
 from astroquery.mast import conf as mast_conf
 from astropy.utils.data import conf as astropy_conf
@@ -21,9 +21,9 @@ astropy_conf.remote_timeout = 60
 
 TRANSLATIONS = {
     "EN": {
-        "title": "TESS Lightcurve Manager",
-        "search_label": "Target Name (e.g. TT And):",
-        "search_placeholder": "Enter target name...",
+        "title": "TESS Lightcurve Studio",
+        "search_label": "Target Name:",
+        "search_placeholder": "e.g. TT And",
         "search_btn": "🔍 Search",
         "searching": "🔍 Searching for '{}'... (MAST servers may take 10-30s, please wait)",
         "not_found": "❌ No results found.",
@@ -31,6 +31,7 @@ TRANSLATIONS = {
         "error": "❌ Error: {}",
         "plot_title": "Combined Lightcurves",
         "xaxis": "Time (BTJD)",
+        "plot_phase_axis": "Phase",
         "yaxis": "Normalized Flux",
         "table_headers": ["Select", "Index", "Target", "Mission", "Author", "Exptime"],
         "settings_title": "⚙️ Export Settings",
@@ -47,7 +48,7 @@ TRANSLATIONS = {
         "plot_btn": "📈 Plot Selected",
         "download_btn": "⬇️ Download / Save Selected",
         "log_title": "Operation Log:",
-        "ready": "🚀 System ready. (PyQt5 Framework)",
+        "ready": "🚀 System ready. (PyQt5 + Plotly)",
         "plot_no_sel": "⚠️ No data selected for plotting.",
         "plot_start": "📈 Plotting {} lightcurves...",
         "plot_err": "❌ Plot error ({}): {}",
@@ -65,12 +66,19 @@ TRANSLATIONS = {
         "sep_semi": "Semicolon (;)",
         "sep_tab": "Tab (\\t)",
         "dec_dot": "Dot (.)",
-        "dec_comma": "Comma (,)"
+        "dec_comma": "Comma (,)",
+        "eph_t0": "Epoch T0 (BJD):",
+        "eph_p": "Period (P):",
+        "eph_find": "🔍 Find T0/P",
+        "eph_searching": "🔍 Searching Ephemeris for '{}'...",
+        "eph_found": "✅ Ephemeris found! T0: {}, P: {}",
+        "eph_not_found": "❌ Ephemeris not found.",
+        "plot_phase": "Phase Fold Plot"
     },
     "TR": {
-        "title": "TESS Işık Eğrisi Yöneticisi",
-        "search_label": "Gök Cismi (Örn: TT And):",
-        "search_placeholder": "Gök cismi adı girin...",
+        "title": "TESS Işık Eğrisi Studio",
+        "search_label": "Gök Cismi:",
+        "search_placeholder": "Örn: TT And",
         "search_btn": "🔍 Arama Yap",
         "searching": "🔍 '{}' aranıyor... (MAST sunucuları 10-30sn sürebilir, lütfen bekleyin)",
         "not_found": "❌ Sonuç bulunamadı.",
@@ -78,6 +86,7 @@ TRANSLATIONS = {
         "error": "❌ Hata: {}",
         "plot_title": "Birleştirilmiş Işık Eğrileri",
         "xaxis": "Zaman (BTJD)",
+        "plot_phase_axis": "Evre (Phase)",
         "yaxis": "Normalize Akı",
         "table_headers": ["Seç", "İndeks", "Gök Cismi", "Misyon", "Yazar", "Exptime"],
         "settings_title": "⚙️ Dışa Aktarma Ayarları",
@@ -94,7 +103,7 @@ TRANSLATIONS = {
         "plot_btn": "📈 Seçilenleri Çiz",
         "download_btn": "⬇️ Seçilenleri İndir / Kaydet",
         "log_title": "İşlem Günlüğü:",
-        "ready": "🚀 Sistem hazır. (PyQt5 Framework)",
+        "ready": "🚀 Sistem hazır. (PyQt5 + Plotly)",
         "plot_no_sel": "⚠️ Çizim yapmak için veri seçmediniz.",
         "plot_start": "📈 {} adet verinin ışık eğrisi çiziliyor...",
         "plot_err": "❌ Çizim hatası ({}): {}",
@@ -112,7 +121,14 @@ TRANSLATIONS = {
         "sep_semi": "Noktalı Virgül (;)",
         "sep_tab": "Sekme (Tab)",
         "dec_dot": "Nokta (.)",
-        "dec_comma": "Virgül (,)"
+        "dec_comma": "Virgül (,)",
+        "eph_t0": "Epok T0 (BJD):",
+        "eph_p": "Periyot (P):",
+        "eph_find": "🔍 T0/P Bul",
+        "eph_searching": "🔍 '{}' için Ephemeris aranıyor...",
+        "eph_found": "✅ Ephemeris bulundu! T0: {}, P: {}",
+        "eph_not_found": "❌ Ephemeris bulunamadı.",
+        "plot_phase": "Evre Grafiği (Phase Fold)"
     }
 }
 
@@ -134,16 +150,62 @@ class SearchThread(QThread):
             for h in targets:
                 res = lk.search_lightcurve(h)
                 if len(res) > 0:
-                    for idx in range(len(res)):
-                        results.append((h, res[idx]))
+                    results.append((h, res))
             
             if len(results) == 0:
                 self.log_signal.emit(self.app_ref.t("not_found"))
             else:
-                self.log_signal.emit(self.app_ref.t("found").format(len(results)))
+                total_rows = sum([len(r[1]) for r in results])
+                self.log_signal.emit(self.app_ref.t("found").format(total_rows))
             self.result_signal.emit(results)
         except Exception as e:
             self.error_signal.emit(self.app_ref.t("error").format(e))
+
+class EphemerisThread(QThread):
+    log_signal = pyqtSignal(str)
+    result_signal = pyqtSignal(str, str)
+    
+    def __init__(self, target, app_ref):
+        super().__init__()
+        self.target = target
+        self.app_ref = app_ref
+        
+    def run(self):
+        self.log_signal.emit(self.app_ref.t("eph_searching").format(self.target))
+        t0, p = None, None
+        
+        # 1. Try Exoplanet Archive
+        try:
+            res = NasaExoplanetArchive.query_object(self.target)
+            if len(res) > 0:
+                p_val = res["pl_orbper"][0]
+                t0_val = res["pl_tranmid"][0]
+                p = str(p_val.value if hasattr(p_val, 'value') else p_val)
+                t0 = str(t0_val.value if hasattr(t0_val, 'value') else t0_val)
+        except Exception:
+            pass
+            
+        # 2. Try VizieR (AAVSO VSX) if not found
+        if not t0 or not p:
+            try:
+                v = Vizier(columns=["Name", "Period", "Epoch"])
+                res = v.query_object(self.target, catalog="B/vsx/vsx")
+                if len(res) > 0 and len(res[0]) > 0:
+                    p_val = res[0]["Period"][0]
+                    t0_val = res[0]["Epoch"][0]
+                    import pandas as pd
+                    if not pd.isna(p_val) and not pd.isna(t0_val):
+                        p = str(p_val.value if hasattr(p_val, 'value') else p_val)
+                        t0 = str(t0_val.value if hasattr(t0_val, 'value') else t0_val)
+            except Exception:
+                pass
+                
+        if t0 and p:
+            self.log_signal.emit(self.app_ref.t("eph_found").format(t0, p))
+            self.result_signal.emit(t0, p)
+        else:
+            self.log_signal.emit(self.app_ref.t("eph_not_found"))
+
 
 class DownloadThread(QThread):
     log_signal = pyqtSignal(str)
@@ -160,7 +222,8 @@ class DownloadThread(QThread):
         
     def run(self):
         self.log_signal.emit(self.app_ref.t("dl_start").format(len(self.data), self.fmt))
-        for h_adi, target, idx in self.data:
+        for h_adi, res_obj, idx in self.data:
+            target = res_obj[idx]
             hedef_temiz = h_adi.replace(" ", "_")
             misyon_adi = str(target.mission[0]).replace(" ", "")
             yazar_adi = str(target.author[0])
@@ -177,7 +240,6 @@ class DownloadThread(QThread):
                         df = lc_temiz.to_pandas()
                         available_cols = [c for c in self.cols if c in df.columns]
                         
-                        # IF no columns selected OR selected columns not in df -> save all
                         if not self.cols:
                             df.to_csv(dosya_adi, sep=self.sep, decimal=self.dec)
                         elif not available_cols:
@@ -199,20 +261,42 @@ class PlotThread(QThread):
     plot_data_signal = pyqtSignal(list)
     finished_signal = pyqtSignal()
     
-    def __init__(self, data, app_ref):
+    def __init__(self, data, is_phase, t0, p, app_ref):
         super().__init__()
         self.data = data
+        self.is_phase = is_phase
+        self.t0 = t0
+        self.p = p
         self.app_ref = app_ref
         
     def run(self):
         self.log_signal.emit(self.app_ref.t("plot_start").format(len(self.data)))
         plot_items = []
-        for h_adi, target, idx in self.data:
+        for h_adi, res_obj, idx in self.data:
+            target = res_obj[idx]
             try:
                 lc = target.download()
                 if lc is not None:
                     lc_temiz = lc.normalize().remove_nans().remove_outliers()
-                    plot_items.append((h_adi, str(target.mission[0]), lc_temiz.time.value, lc_temiz.flux.value, idx))
+                    
+                    if self.is_phase and self.t0 and self.p:
+                        try:
+                            t0_val = float(self.t0)
+                            p_val = float(self.p)
+                            if lc_temiz.time.format == 'btjd' and t0_val > 2450000:
+                                t0_val -= 2457000.0
+                            elif lc_temiz.time.format == 'bkjd' and t0_val > 2450000:
+                                t0_val -= 2454833.0
+                            elif lc_temiz.time.format == 'kbjd' and t0_val > 2450000:
+                                t0_val -= 2454833.0
+                            lc_temiz = lc_temiz.fold(period=p_val, epoch_time=t0_val)
+                        except Exception as e:
+                            self.log_signal.emit("Phase Fold error: " + str(e))
+                            
+                    time_val = lc_temiz.time.value
+                    flux_val = lc_temiz.flux.value
+                    
+                    plot_items.append((h_adi, str(target.mission[0]), time_val, flux_val, idx))
             except Exception as e:
                 self.log_signal.emit(self.app_ref.t("plot_err").format(h_adi, e))
         self.plot_data_signal.emit(plot_items)
@@ -229,7 +313,8 @@ class TESSApp(QMainWindow):
         return TRANSLATIONS[self.lang].get(key, key)
         
     def initUI(self):
-        self.resize(1300, 850)
+        self.setWindowIcon(QIcon("app_icon.png"))
+        self.resize(1400, 900)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
@@ -238,13 +323,13 @@ class TESSApp(QMainWindow):
         left_layout = QVBoxLayout()
         main_layout.addLayout(left_layout, stretch=3)
         
-        # Search layout
+        # Top Search Layout
         search_layout = QHBoxLayout()
         self.lbl_gokcismi = QLabel()
         self.lbl_gokcismi.setFont(QFont("Arial", 11, QFont.Bold))
         
         self.search_input = QLineEdit()
-        self.search_input.setText("TT And")
+        self.search_input.setText("Kepler-10")
         self.search_input.setMinimumHeight(40)
         font = self.search_input.font()
         font.setPointSize(11)
@@ -260,17 +345,51 @@ class TESSApp(QMainWindow):
         search_layout.addWidget(self.search_btn)
         left_layout.addLayout(search_layout)
         
-        # Plot layout
-        self.fig = Figure(figsize=(9, 4.5), dpi=100)
-        self.fig.patch.set_facecolor('#ffffff')
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#f8f9fa')
+        # Ephemeris Settings Group
+        eph_layout = QHBoxLayout()
         
-        self.canvas = FigureCanvasQTAgg(self.fig)
-        self.toolbar = NavigationToolbar2QT(self.canvas, self)
+        self.lbl_eph_t0 = QLabel()
+        self.input_t0 = QLineEdit()
         
-        left_layout.addWidget(self.canvas, stretch=2)
-        left_layout.addWidget(self.toolbar)
+        self.lbl_eph_p = QLabel()
+        self.input_p = QLineEdit()
+        
+        self.btn_find_eph = QPushButton()
+        self.btn_find_eph.clicked.connect(self.find_ephemeris)
+        
+        self.chk_phase = QCheckBox()
+        self.chk_phase.setFont(QFont("Arial", 10, QFont.Bold))
+        
+        eph_layout.addWidget(self.lbl_eph_t0)
+        eph_layout.addWidget(self.input_t0)
+        eph_layout.addWidget(self.lbl_eph_p)
+        eph_layout.addWidget(self.input_p)
+        eph_layout.addWidget(self.btn_find_eph)
+        eph_layout.addSpacing(20)
+        eph_layout.addWidget(self.chk_phase)
+        eph_layout.addStretch()
+        left_layout.addLayout(eph_layout)
+        
+        # Plotly Web View
+        self.web_view = QWebEngineView()
+        self.reset_plot()
+        left_layout.addWidget(self.web_view, stretch=2)
+        
+        # Table Controls
+        table_controls_layout = QHBoxLayout()
+        self.btn_select_all = QPushButton()
+        self.btn_select_all.setMinimumHeight(35)
+        self.btn_select_all.clicked.connect(self.select_all)
+        
+        self.btn_deselect_all = QPushButton()
+        self.btn_deselect_all.setMinimumHeight(35)
+        self.btn_deselect_all.clicked.connect(self.deselect_all)
+        
+        table_controls_layout.addWidget(self.btn_select_all)
+        table_controls_layout.addWidget(self.btn_deselect_all)
+        table_controls_layout.addStretch()
+        
+        left_layout.addLayout(table_controls_layout)
         
         # Table layout
         self.table = QTableWidget()
@@ -360,14 +479,6 @@ class TESSApp(QMainWindow):
         right_layout.addWidget(self.settings_group)
         
         # Buttons
-        self.btn_select_all = QPushButton()
-        self.btn_select_all.setMinimumHeight(35)
-        self.btn_select_all.clicked.connect(self.select_all)
-        
-        self.btn_deselect_all = QPushButton()
-        self.btn_deselect_all.setMinimumHeight(35)
-        self.btn_deselect_all.clicked.connect(self.deselect_all)
-        
         self.btn_plot = QPushButton()
         self.btn_plot.clicked.connect(self.start_plot)
         self.btn_plot.setMinimumHeight(45)
@@ -386,8 +497,6 @@ class TESSApp(QMainWindow):
             QPushButton:hover { background-color: #0069d9; }
         """)
         
-        right_layout.addWidget(self.btn_select_all)
-        right_layout.addWidget(self.btn_deselect_all)
         right_layout.addSpacing(15)
         right_layout.addWidget(self.btn_plot)
         right_layout.addWidget(self.btn_download)
@@ -401,11 +510,23 @@ class TESSApp(QMainWindow):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 10))
+        self.log_text.setMinimumHeight(150)
         right_layout.addWidget(self.log_text)
         
         # Apply initial translation
         self.update_texts()
         self.log(self.t("ready"))
+        
+    def reset_plot(self):
+        fig = go.Figure()
+        fig.update_layout(
+            title=self.t("plot_title"),
+            xaxis_title=self.t("xaxis"),
+            yaxis_title=self.t("yaxis"),
+            margin=dict(l=20, r=20, t=40, b=20),
+            template="plotly_white"
+        )
+        self.web_view.setHtml(fig.to_html(include_plotlyjs='cdn'))
         
     def update_texts(self):
         self.setWindowTitle(self.t("title"))
@@ -413,23 +534,16 @@ class TESSApp(QMainWindow):
         self.search_input.setPlaceholderText(self.t("search_placeholder"))
         self.search_btn.setText(self.t("search_btn"))
         
-        self.ax.set_xlabel(self.t("xaxis"))
-        self.ax.set_ylabel(self.t("yaxis"))
-        if not self.ax.get_title():
-            self.ax.set_title(self.t("plot_title"))
-        else:
-            # If it had a title, we just enforce the translation (might override specific dataset title, but it's ok for base plot)
-            if self.ax.get_title() in [TRANSLATIONS["EN"]["plot_title"], TRANSLATIONS["TR"]["plot_title"]]:
-                self.ax.set_title(self.t("plot_title"))
-        self.fig.tight_layout()
-        self.canvas.draw()
+        self.lbl_eph_t0.setText(self.t("eph_t0"))
+        self.lbl_eph_p.setText(self.t("eph_p"))
+        self.btn_find_eph.setText(self.t("eph_find"))
+        self.chk_phase.setText(self.t("plot_phase"))
         
         self.table.setHorizontalHeaderLabels(self.t("table_headers"))
         
         self.settings_group.setTitle(self.t("settings_title"))
         self.lbl_fmt.setText(self.t("format"))
         
-        # Update combo box items (save current index)
         sep_idx = self.sep_combo.currentIndex()
         if sep_idx == -1: sep_idx = 0
         self.sep_combo.clear()
@@ -479,20 +593,49 @@ class TESSApp(QMainWindow):
         self.search_thread.finished.connect(lambda: self.search_btn.setEnabled(True))
         self.search_thread.start()
         
+    def find_ephemeris(self):
+        target = self.search_input.text().strip()
+        if not target:
+            return
+        self.btn_find_eph.setEnabled(False)
+        self.eph_thread = EphemerisThread(target, self)
+        self.eph_thread.log_signal.connect(self.log)
+        self.eph_thread.result_signal.connect(self.fill_ephemeris)
+        self.eph_thread.finished.connect(lambda: self.btn_find_eph.setEnabled(True))
+        self.eph_thread.start()
+        
+    def fill_ephemeris(self, t0, p):
+        self.input_t0.setText(t0)
+        self.input_p.setText(p)
+        self.chk_phase.setChecked(True)
+        
     def populate_table(self, results):
-        self.global_search_result = results
-        self.table.setRowCount(len(results))
-        for i, (h_adi, target) in enumerate(results):
-            chkBoxItem = QTableWidgetItem()
-            chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            chkBoxItem.setCheckState(Qt.Unchecked)
-            self.table.setItem(i, 0, chkBoxItem)
-            
-            self.table.setItem(i, 1, QTableWidgetItem(str(i)))
-            self.table.setItem(i, 2, QTableWidgetItem(h_adi))
-            self.table.setItem(i, 3, QTableWidgetItem(str(target.mission[0])))
-            self.table.setItem(i, 4, QTableWidgetItem(str(target.author[0])))
-            self.table.setItem(i, 5, QTableWidgetItem(str(target.exptime[0])))
+        self.global_search_result = []
+        total_rows = sum([len(r[1]) for r in results])
+        self.table.setRowCount(total_rows)
+        
+        row_idx = 0
+        for h_adi, res_obj in results:
+            for i in range(len(res_obj)):
+                self.global_search_result.append((h_adi, res_obj, i))
+                
+                row_data = res_obj.table[i]
+                
+                chkBoxItem = QTableWidgetItem()
+                chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+                chkBoxItem.setCheckState(Qt.Unchecked)
+                self.table.setItem(row_idx, 0, chkBoxItem)
+                
+                misyon = str(row_data['mission']) if 'mission' in row_data.colnames else "-"
+                yazar = str(row_data['author']) if 'author' in row_data.colnames else "-"
+                exptime = str(row_data['exptime']) if 'exptime' in row_data.colnames else "-"
+                
+                self.table.setItem(row_idx, 1, QTableWidgetItem(str(row_idx)))
+                self.table.setItem(row_idx, 2, QTableWidgetItem(h_adi))
+                self.table.setItem(row_idx, 3, QTableWidgetItem(misyon))
+                self.table.setItem(row_idx, 4, QTableWidgetItem(yazar))
+                self.table.setItem(row_idx, 5, QTableWidgetItem(exptime))
+                row_idx += 1
             
     def get_selected_data(self):
         selected = []
@@ -515,30 +658,42 @@ class TESSApp(QMainWindow):
             self.log(self.t("plot_no_sel"))
             return
             
+        is_phase = self.chk_phase.isChecked()
+        t0 = self.input_t0.text().strip()
+        p = self.input_p.text().strip()
+            
         self.btn_plot.setEnabled(False)
-        self.plot_thread = PlotThread(selected, self)
+        self.plot_thread = PlotThread(selected, is_phase, t0, p, self)
         self.plot_thread.log_signal.connect(self.log)
         self.plot_thread.plot_data_signal.connect(self.update_plot)
         self.plot_thread.finished_signal.connect(lambda: self.btn_plot.setEnabled(True))
         self.plot_thread.start()
         
     def update_plot(self, plot_items):
-        self.ax.clear()
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+        fig = go.Figure()
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
         has_data = False
         
         for idx, (h_adi, misyon, time_val, flux_val, i) in enumerate(plot_items):
             color = colors[idx % len(colors)]
-            self.ax.scatter(time_val, flux_val, s=2, label=f"[{i}] {h_adi} ({misyon})", color=color, alpha=0.8)
+            fig.add_trace(go.Scattergl(
+                x=time_val, y=flux_val, mode='markers',
+                marker=dict(size=3, color=color, opacity=0.8),
+                name=f"[{i}] {h_adi} ({misyon})"
+            ))
             has_data = True
             
         if has_data:
-            self.ax.set_xlabel(self.t("xaxis"))
-            self.ax.set_ylabel(self.t("yaxis"))
-            self.ax.legend(loc='upper right', fontsize='small')
-            self.ax.set_title(self.t("plot_title"))
-            self.fig.tight_layout()
-            self.canvas.draw()
+            xaxis_title = self.t("plot_phase_axis") if self.chk_phase.isChecked() else self.t("xaxis")
+            fig.update_layout(
+                title=self.t("plot_title"),
+                xaxis_title=xaxis_title,
+                yaxis_title=self.t("yaxis"),
+                margin=dict(l=20, r=20, t=40, b=20),
+                template="plotly_white",
+                legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+            )
+            self.web_view.setHtml(fig.to_html(include_plotlyjs='cdn'))
             self.log(self.t("plot_done"))
         else:
             self.log(self.t("plot_fail"))

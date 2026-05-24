@@ -14,10 +14,19 @@ Eğer sistem genelinde (apt ile) paket kurmanız gerekirse `python3-pyqt5` paket
 pip3 install -r requirements.txt
 ```
 
-## Çalıştırma
-Kütüphaneler yüklendikten sonra aracı başlatmak için:
+## Uygulama Kısayolu Oluşturma (Ubuntu/Linux)
+Terminalden başlatmak yerine, bilgisayarınızdaki uygulamalar menüsüne bir kısayol ekleyebilirsiniz. Bunun için projedeki `kurulum_ubuntu.sh` betiğini çalıştırın:
 ```bash
-python3 TESS_Araci.py
+chmod +x kurulum_ubuntu.sh
+./kurulum_ubuntu.sh
+```
+Bu işlemden sonra uygulama menünüzde **TESS Manager** yazarak uygulamayı normal bir program gibi çalıştırabilirsiniz.
+
+## Terminalden Manuel Çalıştırma
+Eğer kısayol oluşturmak istemezseniz, terminalden conda ortamınızı aktif edip aracı başlatabilirsiniz:
+```bash
+conda activate phoebe
+python TESS_Araci.py
 ```
 
 Işık eğrileri ve indirme seçenekleri Linux ortamında da tamamen aynı görsel ve mantıkla çalışacaktır.

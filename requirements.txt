@@ -5,3 +5,5 @@ matplotlib
 pandas
 numpy
 PyQt5
+PyQtWebEngine
+plotly
