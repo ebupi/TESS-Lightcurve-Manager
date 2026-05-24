@@ -1,272 +1,417 @@
-import tkinter as tk
-from tkinter import scrolledtext, messagebox, ttk
-import lightkurve as lk
-import threading
+import sys
 import os
+import pandas as pd
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                             QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
+                             QHeaderView, QComboBox, QCheckBox, QTextEdit, QMessageBox, QGroupBox)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont
+import lightkurve as lk
+
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Qt5Agg')
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
+
 from astroquery.mast import conf as mast_conf
 from astropy.utils.data import conf as astropy_conf
 
-# MAST ve Astropy limitlerini genişletiyoruz
 mast_conf.timeout = 3600
 astropy_conf.remote_timeout = 3600
 
-global_search_result = None
-checkbutton_vars = []
-
-def arama_yap():
-    global global_search_result, checkbutton_vars
-    hedef = giris_kutusu.get().strip()
+class SearchThread(QThread):
+    log_signal = pyqtSignal(str)
+    result_signal = pyqtSignal(list)
+    error_signal = pyqtSignal(str)
     
-    log_alani.delete(1.0, tk.END)
-    log_alani.insert(tk.END, f"🔭 '{hedef}' için MAST sunucularında arama yapılıyor...\nLütfen bekleyin...\n")
-    
-    # Önceki checkbox'ları temizle
-    for widget in checkbox_frame_inner.winfo_children():
-        widget.destroy()
-    checkbutton_vars = []
-    
-    try:
-        hedefler = [h.strip() for h in hedef.split(',')] if ',' in hedef else [hedef]
-        global_search_result = []
-        for h in hedefler:
-            res = lk.search_lightcurve(h)
-            if len(res) > 0:
-                for idx in range(len(res)):
-                    global_search_result.append((h, res[idx]))
+    def __init__(self, target):
+        super().__init__()
+        self.target = target
         
-        if len(global_search_result) == 0:
-            log_alani.insert(tk.END, "Sonuç bulunamadı.")
-        else:
-            log_alani.insert(tk.END, f"✅ Toplam {len(global_search_result)} sonuç bulundu!\n")
-            
-            # Başlık satırı
-            baslik = tk.Label(checkbox_frame_inner, 
-                              text=f"  {'İndeks':<8} {'Gök Cismi':<12} {'Misyon':<20} {'Yazar':<12} {'Exptime':<10}",
-                              font=("Courier New", 9, "bold"), anchor="w", bg="white")
-            baslik.pack(fill=tk.X, padx=2)
-            
-            ttk.Separator(checkbox_frame_inner, orient="horizontal").pack(fill=tk.X, padx=2, pady=2)
-            
-            # Her sonuç için checkbox oluştur
-            for idx, (hedef_adi, satir) in enumerate(global_search_result):
-                misyon = str(satir.mission[0])
-                yazar = str(satir.author[0])
-                exptime = str(satir.exptime[0])
-                
-                var = tk.IntVar(value=0)
-                checkbutton_vars.append(var)
-                
-                metin = f"[{idx}]  {hedef_adi:<12} {misyon:<20} {yazar:<12} {exptime:<10}"
-                cb = tk.Checkbutton(checkbox_frame_inner, text=metin, variable=var,
-                                    font=("Courier New", 9), anchor="w", bg="white",
-                                    activebackground="#e0f0ff", selectcolor="white")
-                cb.pack(fill=tk.X, padx=5, pady=1)
-            
-            # Canvas scroll bölgesini güncelle
-            checkbox_frame_inner.update_idletasks()
-            checkbox_canvas.config(scrollregion=checkbox_canvas.bbox("all"))
-    except Exception as e:
-        log_alani.insert(tk.END, f"Arama sırasında hata oluştu:\n{e}")
-
-def arama_thread():
-    threading.Thread(target=arama_yap, daemon=True).start()
-
-def tumunu_sec():
-    for var in checkbutton_vars:
-        var.set(1)
-
-def tumunu_kaldir():
-    for var in checkbutton_vars:
-        var.set(0)
-
-def indirme_yap():
-    global global_search_result
-    if global_search_result is None or len(global_search_result) == 0:
-        messagebox.showwarning("Uyarı", "Lütfen önce arama yapın ve sonuç bulun!")
-        return
-    
-    # Seçili indeksleri bul
-    secili_indeksler = [i for i, var in enumerate(checkbutton_vars) if var.get() == 1]
-    
-    if len(secili_indeksler) == 0:
-        messagebox.showwarning("Uyarı", "Lütfen indirmek istediğiniz verileri tik işaretiyle seçin!")
-        return
-    
-    format_secimi = format_var.get()
-    uzanti = "csv" if format_secimi == "CSV" else "fits"
-    log_alani.insert(tk.END, f"\n\n⬇️ Seçilen {len(secili_indeksler)} veri ({format_secimi}) indiriliyor...\n")
-    
-    for i in secili_indeksler:
-        hedef_adi, target = global_search_result[i]
-        hedef_temiz = hedef_adi.replace(" ", "_")
-        misyon_adi = str(target.mission[0]).replace(" ", "")
-        yazar_adi = str(target.author[0])
-        dosya_adi = f"{hedef_temiz}_{misyon_adi}_{yazar_adi}_indeks{i}.{uzanti}"
-        
-        log_alani.insert(tk.END, f"\n⏳ İndiriliyor: {dosya_adi} ...")
-        log_alani.see(tk.END)
-        
+    def run(self):
+        self.log_signal.emit(f"🔍 '{self.target}' aranıyor...")
         try:
-            lc = target.download()
-            if lc is not None:
-                lc_temiz = lc.normalize().remove_nans().remove_outliers()
-                if format_secimi == "CSV":
-                    lc_temiz.to_csv(dosya_adi)
-                else:
-                    lc_temiz.to_fits(dosya_adi, overwrite=True)
-                log_alani.insert(tk.END, f" ✅ Kaydedildi!")
+            results = []
+            targets = [h.strip() for h in self.target.split(',')] if ',' in self.target else [self.target]
+            for h in targets:
+                res = lk.search_lightcurve(h)
+                if len(res) > 0:
+                    for idx in range(len(res)):
+                        results.append((h, res[idx]))
+            
+            if len(results) == 0:
+                self.log_signal.emit("❌ Sonuç bulunamadı.")
+            else:
+                self.log_signal.emit(f"✅ Toplam {len(results)} sonuç bulundu.")
+            self.result_signal.emit(results)
         except Exception as e:
-            log_alani.insert(tk.END, f" ❌ Hata: {e}")
+            self.error_signal.emit(str(e))
+
+class DownloadThread(QThread):
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal()
     
-    log_alani.insert(tk.END, "\n\n🎉 Tüm seçili işlemler tamamlandı!\n")
-    log_alani.see(tk.END)
-
-def indirme_thread():
-    threading.Thread(target=indirme_yap, daemon=True).start()
-
-def goster_yap():
-    global global_search_result
-    if global_search_result is None or len(global_search_result) == 0:
-        messagebox.showwarning("Uyarı", "Lütfen önce arama yapın ve sonuç bulun!")
-        return
-    secili_indeksler = [i for i, var in enumerate(checkbutton_vars) if var.get() == 1]
-    if len(secili_indeksler) == 0:
-        messagebox.showwarning("Uyarı", "Lütfen göstermek istediğiniz verileri seçin!")
-        return
+    def __init__(self, data, fmt, sep, dec, cols):
+        super().__init__()
+        self.data = data # list of (hedef_adi, target, index)
+        self.fmt = fmt
+        self.sep = sep
+        self.dec = dec
+        self.cols = cols
         
-    log_alani.insert(tk.END, f"\n\n📈 Seçilen {len(secili_indeksler)} veri çiziliyor...\n")
-    log_alani.see(tk.END)
-    
-    def worker():
-        for i in secili_indeksler:
-            hedef_adi, target = global_search_result[i]
-            log_alani.insert(tk.END, f"\n⏳ İndiriliyor: {hedef_adi} ({target.mission[0]})...")
-            log_alani.see(tk.END)
+    def run(self):
+        self.log_signal.emit(f"⬇️ {len(self.data)} veri ({self.fmt}) formatında indiriliyor...")
+        for h_adi, target, idx in self.data:
+            hedef_temiz = h_adi.replace(" ", "_")
+            misyon_adi = str(target.mission[0]).replace(" ", "")
+            yazar_adi = str(target.author[0])
+            uzanti = "csv" if self.fmt == "CSV" else "fits"
+            dosya_adi = f"{hedef_temiz}_{misyon_adi}_{yazar_adi}_indeks{idx}.{uzanti}"
+            
+            self.log_signal.emit(f"⏳ İndiriliyor: {dosya_adi}")
             try:
                 lc = target.download()
                 if lc is not None:
                     lc_temiz = lc.normalize().remove_nans().remove_outliers()
-                    time_val = lc_temiz.time.value
-                    flux_val = lc_temiz.flux.value
                     
-                    def make_plot(t=time_val, f=flux_val, h_adi=hedef_adi, mis=str(target.mission[0])):
-                        plot_win = tk.Toplevel(pencere)
-                        plot_win.title(f"Işık Eğrisi: {h_adi} - {mis}")
-                        plot_win.geometry("850x500")
-                        
-                        fig = Figure(figsize=(8, 4), dpi=100)
-                        ax = fig.add_subplot(111)
-                        ax.scatter(t, f, s=1, color='black')
-                        ax.set_xlabel("Zaman (BTJD)")
-                        ax.set_ylabel("Normalize Akı")
-                        ax.set_title(f"{h_adi} - {mis}")
-                        fig.tight_layout()
-                        
-                        canvas = FigureCanvasTkAgg(fig, master=plot_win)
-                        canvas.draw()
-                        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-                        
-                        toolbar = NavigationToolbar2Tk(canvas, plot_win)
-                        toolbar.update()
-                        
-                    pencere.after(0, make_plot)
-                    log_alani.insert(tk.END, " ✅ Çizildi!")
+                    if self.fmt == "CSV":
+                        df = lc_temiz.to_pandas()
+                        available_cols = [c for c in self.cols if c in df.columns]
+                        if not available_cols:
+                            self.log_signal.emit(f"⚠️ {dosya_adi} için seçilen sütunlar bulunamadı. Tamamı kaydediliyor.")
+                            df.to_csv(dosya_adi, sep=self.sep, decimal=self.dec)
+                        else:
+                            df[available_cols].to_csv(dosya_adi, sep=self.sep, decimal=self.dec, index=False)
+                    else:
+                        lc_temiz.to_fits(dosya_adi, overwrite=True)
+                    self.log_signal.emit(f"✅ Kaydedildi: {dosya_adi}")
             except Exception as e:
-                log_alani.insert(tk.END, f" ❌ Hata: {e}")
+                self.log_signal.emit(f"❌ Hata ({h_adi}): {e}")
+                
+        self.log_signal.emit("🎉 Tüm indirme/kaydetme işlemleri tamamlandı!")
+        self.finished_signal.emit()
+
+class PlotThread(QThread):
+    log_signal = pyqtSignal(str)
+    plot_data_signal = pyqtSignal(list)
+    finished_signal = pyqtSignal()
+    
+    def __init__(self, data):
+        super().__init__()
+        self.data = data
         
-        log_alani.insert(tk.END, "\n\n🎉 Gösterim tamamlandı!\n")
-        log_alani.see(tk.END)
+    def run(self):
+        self.log_signal.emit(f"📈 {len(self.data)} adet verinin ışık eğrisi çiziliyor...")
+        plot_items = []
+        for h_adi, target, idx in self.data:
+            try:
+                lc = target.download()
+                if lc is not None:
+                    lc_temiz = lc.normalize().remove_nans().remove_outliers()
+                    plot_items.append((h_adi, str(target.mission[0]), lc_temiz.time.value, lc_temiz.flux.value, idx))
+            except Exception as e:
+                self.log_signal.emit(f"❌ Çizim hatası ({h_adi}): {e}")
+        self.plot_data_signal.emit(plot_items)
+        self.finished_signal.emit()
+
+class TESSApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("TESS Işık Eğrisi Yöneticisi (PyQt5)")
+        self.resize(1300, 850)
+        self.global_search_result = []
+        self.initUI()
         
-    threading.Thread(target=worker, daemon=True).start()
+    def initUI(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        
+        # SOL PANEL
+        left_layout = QVBoxLayout()
+        main_layout.addLayout(left_layout, stretch=3)
+        
+        # Arama Kısmı
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Gök cismi adı girin (Örn: TT And)")
+        self.search_input.setText("TT And")
+        self.search_input.setMinimumHeight(40)
+        font = self.search_input.font()
+        font.setPointSize(11)
+        self.search_input.setFont(font)
+        
+        self.search_btn = QPushButton("🔍 Arama Yap")
+        self.search_btn.setMinimumHeight(40)
+        self.search_btn.setFont(QFont("Arial", 11, QFont.Bold))
+        self.search_btn.clicked.connect(self.start_search)
+        
+        lbl_gokcismi = QLabel("Gök Cismi:")
+        lbl_gokcismi.setFont(QFont("Arial", 11, QFont.Bold))
+        search_layout.addWidget(lbl_gokcismi)
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(self.search_btn)
+        left_layout.addLayout(search_layout)
+        
+        # Plot Kısmı
+        self.fig = Figure(figsize=(9, 4.5), dpi=100)
+        self.fig.patch.set_facecolor('#ffffff')
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_facecolor('#f8f9fa')
+        self.ax.set_xlabel("Zaman (BTJD)")
+        self.ax.set_ylabel("Normalize Akı")
+        self.ax.set_title("Birleştirilmiş Işık Eğrileri Grafiği")
+        self.fig.tight_layout()
+        
+        self.canvas = FigureCanvasQTAgg(self.fig)
+        self.toolbar = NavigationToolbar2QT(self.canvas, self)
+        
+        left_layout.addWidget(self.canvas, stretch=2)
+        left_layout.addWidget(self.toolbar)
+        
+        # Sonuç Tablosu
+        self.table = QTableWidget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["Seç", "İndeks", "Gök Cismi", "Misyon", "Yazar", "Exptime"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setStyleSheet("QTableWidget { font-size: 13px; }")
+        left_layout.addWidget(self.table, stretch=1)
+        
+        # SAĞ PANEL
+        right_layout = QVBoxLayout()
+        main_layout.addLayout(right_layout, stretch=1)
+        
+        settings_group = QGroupBox("⚙️ Dışa Aktarma Ayarları")
+        settings_group.setFont(QFont("Arial", 11, QFont.Bold))
+        set_layout = QVBoxLayout(settings_group)
+        
+        font_normal = QFont("Arial", 10)
+        
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["CSV", "FITS"])
+        self.format_combo.setFont(font_normal)
+        self.format_combo.setMinimumHeight(35)
+        lbl_fmt = QLabel("Format:")
+        lbl_fmt.setFont(font_normal)
+        set_layout.addWidget(lbl_fmt)
+        set_layout.addWidget(self.format_combo)
+        
+        self.sep_combo = QComboBox()
+        self.sep_combo.addItems(["Virgül (,)", "Noktalı Virgül (;)", "Sekme (Tab)"])
+        self.sep_combo.setFont(font_normal)
+        self.sep_combo.setMinimumHeight(35)
+        lbl_sep = QLabel("Ayırıcı (Separator):")
+        lbl_sep.setFont(font_normal)
+        set_layout.addWidget(lbl_sep)
+        set_layout.addWidget(self.sep_combo)
+        
+        self.dec_combo = QComboBox()
+        self.dec_combo.addItems(["Nokta (.)", "Virgül (,)"])
+        self.dec_combo.setFont(font_normal)
+        self.dec_combo.setMinimumHeight(35)
+        lbl_dec = QLabel("Ondalık Ayırıcı (Decimal):")
+        lbl_dec.setFont(font_normal)
+        set_layout.addWidget(lbl_dec)
+        set_layout.addWidget(self.dec_combo)
+        
+        lbl_cols = QLabel("Kaydedilecek Sütunlar:")
+        lbl_cols.setFont(QFont("Arial", 10, QFont.Bold))
+        set_layout.addWidget(lbl_cols)
+        
+        self.cb_time = QCheckBox("Zaman (time)")
+        self.cb_time.setChecked(True)
+        self.cb_time.setFont(font_normal)
+        
+        self.cb_flux = QCheckBox("Akı (flux)")
+        self.cb_flux.setChecked(True)
+        self.cb_flux.setFont(font_normal)
+        
+        self.cb_err = QCheckBox("Akı Hatası (flux_err)")
+        self.cb_err.setChecked(True)
+        self.cb_err.setFont(font_normal)
+        
+        set_layout.addWidget(self.cb_time)
+        set_layout.addWidget(self.cb_flux)
+        set_layout.addWidget(self.cb_err)
+        
+        right_layout.addWidget(settings_group)
+        
+        # Butonlar
+        self.btn_select_all = QPushButton("☑ Tümünü Seç")
+        self.btn_select_all.setMinimumHeight(35)
+        self.btn_select_all.clicked.connect(self.select_all)
+        
+        self.btn_deselect_all = QPushButton("☐ Seçimi Temizle")
+        self.btn_deselect_all.setMinimumHeight(35)
+        self.btn_deselect_all.clicked.connect(self.deselect_all)
+        
+        self.btn_plot = QPushButton("📈 Seçilenleri Çiz")
+        self.btn_plot.clicked.connect(self.start_plot)
+        self.btn_plot.setMinimumHeight(45)
+        
+        self.btn_download = QPushButton("⬇️ Seçilenleri İndir / Kaydet")
+        self.btn_download.clicked.connect(self.start_download)
+        self.btn_download.setMinimumHeight(50)
+        
+        # PyQt stylesheets for styling buttons
+        self.btn_plot.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8; 
+                color: white; 
+                font-weight: bold;
+                font-size: 14px;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #138496; }
+        """)
+        
+        self.btn_download.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff; 
+                color: white; 
+                font-weight: bold;
+                font-size: 14px;
+                border-radius: 5px;
+            }
+            QPushButton:hover { background-color: #0069d9; }
+        """)
+        
+        right_layout.addWidget(self.btn_select_all)
+        right_layout.addWidget(self.btn_deselect_all)
+        right_layout.addSpacing(15)
+        right_layout.addWidget(self.btn_plot)
+        right_layout.addWidget(self.btn_download)
+        
+        # Log 
+        lbl_log = QLabel("İşlem Günlüğü:")
+        lbl_log.setFont(QFont("Arial", 10, QFont.Bold))
+        right_layout.addSpacing(15)
+        right_layout.addWidget(lbl_log)
+        
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setFont(QFont("Consolas", 10))
+        right_layout.addWidget(self.log_text)
+        
+        self.log("🚀 Sistem hazır. (PyQt5 Framework)")
+        
+    def log(self, msg):
+        self.log_text.append(msg)
+        
+    def start_search(self):
+        target = self.search_input.text().strip()
+        if not target:
+            return
+        self.search_btn.setEnabled(False)
+        self.table.setRowCount(0)
+        self.global_search_result = []
+        
+        self.search_thread = SearchThread(target)
+        self.search_thread.log_signal.connect(self.log)
+        self.search_thread.result_signal.connect(self.populate_table)
+        self.search_thread.error_signal.connect(lambda e: self.log(f"❌ Hata: {e}"))
+        self.search_thread.finished.connect(lambda: self.search_btn.setEnabled(True))
+        self.search_thread.start()
+        
+    def populate_table(self, results):
+        self.global_search_result = results
+        self.table.setRowCount(len(results))
+        for i, (h_adi, target) in enumerate(results):
+            chkBoxItem = QTableWidgetItem()
+            chkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            chkBoxItem.setCheckState(Qt.Unchecked)
+            self.table.setItem(i, 0, chkBoxItem)
+            
+            self.table.setItem(i, 1, QTableWidgetItem(str(i)))
+            self.table.setItem(i, 2, QTableWidgetItem(h_adi))
+            self.table.setItem(i, 3, QTableWidgetItem(str(target.mission[0])))
+            self.table.setItem(i, 4, QTableWidgetItem(str(target.author[0])))
+            self.table.setItem(i, 5, QTableWidgetItem(str(target.exptime[0])))
+            
+    def get_selected_data(self):
+        selected = []
+        for i in range(self.table.rowCount()):
+            if self.table.item(i, 0).checkState() == Qt.Checked:
+                selected.append((self.global_search_result[i][0], self.global_search_result[i][1], i))
+        return selected
 
-def goster_thread():
-    threading.Thread(target=goster_yap, daemon=True).start()
+    def select_all(self):
+        for i in range(self.table.rowCount()):
+            self.table.item(i, 0).setCheckState(Qt.Checked)
 
-# =================== ARAYÜZ TASARIMI ===================
-pencere = tk.Tk()
-pencere.title("TESS Işık Eğrisi İndirme Aracı")
-pencere.geometry("780x660")
-pencere.configure(bg="#f0f0f0")
+    def deselect_all(self):
+        for i in range(self.table.rowCount()):
+            self.table.item(i, 0).setCheckState(Qt.Unchecked)
+            
+    def start_plot(self):
+        selected = self.get_selected_data()
+        if not selected:
+            self.log("⚠️ Çizim yapmak için veri seçmediniz.")
+            return
+            
+        self.btn_plot.setEnabled(False)
+        self.plot_thread = PlotThread(selected)
+        self.plot_thread.log_signal.connect(self.log)
+        self.plot_thread.plot_data_signal.connect(self.update_plot)
+        self.plot_thread.finished_signal.connect(lambda: self.btn_plot.setEnabled(True))
+        self.plot_thread.start()
+        
+    def update_plot(self, plot_items):
+        self.ax.clear()
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+        has_data = False
+        
+        for idx, (h_adi, misyon, time_val, flux_val, i) in enumerate(plot_items):
+            color = colors[idx % len(colors)]
+            self.ax.scatter(time_val, flux_val, s=2, label=f"[{i}] {h_adi} ({misyon})", color=color, alpha=0.8)
+            has_data = True
+            
+        if has_data:
+            self.ax.set_xlabel("Zaman (BTJD)")
+            self.ax.set_ylabel("Normalize Akı")
+            self.ax.legend(loc='upper right', fontsize='small')
+            self.ax.set_title("Birleştirilmiş Işık Eğrileri")
+            self.fig.tight_layout()
+            self.canvas.draw()
+            self.log("✅ Çizim tamamlandı.")
+        else:
+            self.log("⚠️ Çizilecek veri indirilemedi.")
+            
+    def start_download(self):
+        selected = self.get_selected_data()
+        if not selected:
+            self.log("⚠️ İndirmek için veri seçmediniz.")
+            return
+            
+        fmt = self.format_combo.currentText()
+        sep_map = {"Virgül (,)": ",", "Noktalı Virgül (;)": ";", "Sekme (Tab)": "\t"}
+        dec_map = {"Nokta (.)": ".", "Virgül (,)": ","}
+        
+        sep = sep_map.get(self.sep_combo.currentText(), ",")
+        dec = dec_map.get(self.dec_combo.currentText(), ".")
+        
+        cols = []
+        if self.cb_time.isChecked(): cols.append("time")
+        if self.cb_flux.isChecked(): cols.append("flux")
+        if self.cb_err.isChecked(): cols.append("flux_err")
+        
+        if fmt == "CSV" and not cols:
+            self.log("❌ Hata: Kaydetmek için en az bir sütun seçmelisiniz!")
+            return
+            
+        self.btn_download.setEnabled(False)
+        self.download_thread = DownloadThread(selected, fmt, sep, dec, cols)
+        self.download_thread.log_signal.connect(self.log)
+        self.download_thread.finished_signal.connect(lambda: self.btn_download.setEnabled(True))
+        self.download_thread.start()
 
-icon_path = r"C:\Users\Obi\TESS_Araci\dist\TESS_Araci\gemini.png"
-if os.path.exists(icon_path):
-    try:
-        icon_img = tk.PhotoImage(file=icon_path)
-        pencere.iconphoto(False, icon_img)
-    except Exception as e:
-        print("Ikon yuklenemedi:", e)
-
-# Başlık
-tk.Label(pencere, text="TESS Veri Arama ve İndirme Yöneticisi",
-         font=("Arial", 14, "bold"), bg="#f0f0f0").pack(pady=10)
-
-# === Arama Bölümü ===
-arama_frame = tk.Frame(pencere, bg="#f0f0f0")
-arama_frame.pack(pady=5)
-tk.Label(arama_frame, text="Gök Cismi: ", font=("Arial", 11), bg="#f0f0f0").pack(side=tk.LEFT)
-giris_kutusu = tk.Entry(arama_frame, font=("Arial", 11), width=25)
-giris_kutusu.insert(0, "TT And")
-giris_kutusu.pack(side=tk.LEFT, padx=5)
-tk.Button(arama_frame, text="🔍 Arama Yap", font=("Arial", 10, "bold"),
-          bg="#4a90d9", fg="white", command=arama_thread).pack(side=tk.LEFT, padx=5)
-
-# === Format Bölümü ===
-format_frame = tk.Frame(pencere, bg="#f0f0f0")
-format_frame.pack(pady=2)
-tk.Label(format_frame, text="İndirme Formatı: ", bg="#f0f0f0", font=("Arial", 10)).pack(side=tk.LEFT)
-format_var = tk.StringVar(value="CSV")
-tk.Radiobutton(format_frame, text="CSV", variable=format_var, value="CSV", bg="#f0f0f0").pack(side=tk.LEFT)
-tk.Radiobutton(format_frame, text="FITS", variable=format_var, value="FITS", bg="#f0f0f0").pack(side=tk.LEFT)
-
-# === Sonuç Listesi (Checkbox'lı) ===
-sonuc_label = tk.Label(pencere, text="Arama Sonuçları (indirmek istediklerinizi tiklayın):",
-                       font=("Arial", 10, "bold"), bg="#f0f0f0")
-sonuc_label.pack(anchor="w", padx=15, pady=(10, 2))
-
-checkbox_container = tk.Frame(pencere, bd=1, relief=tk.SUNKEN)
-checkbox_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=2)
-
-checkbox_canvas = tk.Canvas(checkbox_container, bg="white", highlightthickness=0)
-scrollbar = tk.Scrollbar(checkbox_container, orient="vertical", command=checkbox_canvas.yview)
-checkbox_frame_inner = tk.Frame(checkbox_canvas, bg="white")
-
-checkbox_frame_inner.bind("<Configure>",
-    lambda e: checkbox_canvas.config(scrollregion=checkbox_canvas.bbox("all")))
-checkbox_canvas.create_window((0, 0), window=checkbox_frame_inner, anchor="nw")
-checkbox_canvas.config(yscrollcommand=scrollbar.set)
-
-scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-checkbox_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-# Mouse wheel scroll
-def _on_mousewheel(event):
-    checkbox_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-checkbox_canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
-# === Seçim Butonları ===
-secim_frame = tk.Frame(pencere, bg="#f0f0f0")
-secim_frame.pack(pady=5)
-tk.Button(secim_frame, text="✅ Tümünü Seç", font=("Arial", 9),
-          bg="#a0d0a0", command=tumunu_sec).pack(side=tk.LEFT, padx=5)
-tk.Button(secim_frame, text="❌ Tümünü Kaldır", font=("Arial", 9),
-          bg="#d0a0a0", command=tumunu_kaldir).pack(side=tk.LEFT, padx=5)
-tk.Button(secim_frame, text="📈 Seçilenleri Göster", font=("Arial", 10, "bold"),
-          bg="#4fc3f7", command=goster_thread).pack(side=tk.LEFT, padx=5)
-tk.Button(secim_frame, text="⬇️ Seçilenleri İndir", font=("Arial", 10, "bold"),
-          bg="#5cb85c", fg="white", command=indirme_thread).pack(side=tk.LEFT, padx=10)
-
-# === Log Alanı ===
-tk.Label(pencere, text="İşlem Günlüğü:", font=("Arial", 10, "bold"),
-         bg="#f0f0f0").pack(anchor="w", padx=15, pady=(5, 2))
-log_alani = scrolledtext.ScrolledText(pencere, width=85, height=7, font=("Courier New", 9))
-log_alani.pack(padx=15, pady=(0, 5))
-
-# İmza
-tk.Label(pencere, text="mustafa salman", font=("Arial", 8, "italic"),
-         fg="gray", bg="#f0f0f0").pack(side=tk.BOTTOM, anchor=tk.SE, padx=10, pady=5)
-
-pencere.mainloop()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')
+    ex = TESSApp()
+    ex.show()
+    sys.exit(app.exec_())
