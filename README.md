@@ -6,8 +6,8 @@
 
 A desktop tool that allows you to search for TESS (Transiting Exoplanet Survey Satellite) data from MAST servers, preview them on a plot, and batch download them to your computer. **With the new release, the GUI has been completely modernized using PyQt5.**
 
-![TESS Manager Interface](screenshot.png)
-
+![TESS Manager Interface Light Curve](light_curve.png)
+![TESS Manager Interface Phase](phase.png)
 ## Features
 - **Multi-Target Search**: Perform multi-target searches with a single click using comma-separated target names.
 - **Combined Live Preview**: Powered by Lightkurve and Matplotlib (Qt5), you can smoothly view multiple lightcurves combined on a single anti-aliased plot.
