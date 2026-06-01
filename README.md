@@ -21,5 +21,7 @@ Python is required for the project to run:
 
 *(For a faster Linux or macOS installation, please check the `LINUX_KURULUM.md` document.)*
 
-## For Windows Users
-Windows users can directly run the application using the `TESS_Araci.exe` file located in the `dist` folder (if published) without needing any installation.
+## 📥 Download Standalone App (No Python Needed!)
+For regular users, you can download the compiled standalone desktop application directly:
+- **🪟 Windows (10/11)**: Download [TESS_Lightcurve_Studio.exe](https://github.com/ebupi/TESS-Lightcurve-Manager/releases/download/v2.0.0/TESS_Lightcurve_Studio.exe) (Simply run by double-clicking, no install required).
+- **🐧 Linux (Ubuntu/Debian)**: Download [tess-lightcurve-studio_2.0_amd64.deb](https://github.com/ebupi/TESS-Lightcurve-Manager/releases/download/v2.0.0/tess-lightcurve-studio_2.0_amd64.deb) (Install using `sudo dpkg -i <file_name>`).
