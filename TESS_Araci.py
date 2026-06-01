@@ -313,7 +313,10 @@ class TESSApp(QMainWindow):
         return TRANSLATIONS[self.lang].get(key, key)
         
     def initUI(self):
-        self.setWindowIcon(QIcon("tess_icon_v2.png"))
+        icon_path = "tess_icon_v2.png"
+        if hasattr(sys, '_MEIPASS'):
+            icon_path = os.path.join(sys._MEIPASS, icon_path)
+        self.setWindowIcon(QIcon(icon_path))
         self.resize(1400, 900)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)

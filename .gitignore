@@ -2,8 +2,15 @@ build/
 dist/
 __pycache__/
 *.spec
+!packaging/tess_manager.spec
 *.pyc
 debug_out.txt
 tmp_test.py
 .idea/
 .vscode/
+
+# Packaging artifacts
+packaging/*.deb
+packaging/dist/
+packaging/build/
+packaging/deb_build/
